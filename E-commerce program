@@ -1,0 +1,316 @@
+import Data.List (maximumBy)
+import Data.Ord (comparing)
+import qualified Data.Map as M
+
+
+-- ==========================================
+-- E-COMMERCE LOG ANALYZER
+-- Functional Programming using Haskell
+-- ==========================================
+
+
+-- ------------------------------------------
+-- 1. Order Data Type
+-- ------------------------------------------
+
+data Order = Order
+    { orderId   :: Int
+    , category  :: String
+    , product   :: String
+    , quantity  :: Int
+    , unitPrice :: Double
+    , currency  :: String
+    }
+    deriving (Show)
+
+
+-- ------------------------------------------
+-- 2. Check Whether an Order is Valid
+-- ------------------------------------------
+
+-- Pure function:
+-- An order is valid if quantity is greater than 0
+-- and price is not negative.
+
+validOrder :: Order -> Bool
+validOrder order =
+    quantity order > 0 && unitPrice order >= 0
+
+
+-- ------------------------------------------
+-- 3. Clean Data using FILTER
+-- ------------------------------------------
+
+-- Removes corrupted/incomplete transaction logs.
+
+cleanData :: [Order] -> [Order]
+cleanData orders =
+    filter validOrder orders
+
+
+-- ------------------------------------------
+-- 4. Currency Conversion
+-- ------------------------------------------
+
+-- Converts the unit price into USD.
+
+convertToUSD :: Order -> Double
+convertToUSD order =
+    case currency order of
+        "USD" -> unitPrice order
+
+        -- Example educational exchange rates
+        "INR" -> unitPrice order / 83.0
+
+        "EUR" -> unitPrice order / 0.92
+
+        -- Unknown currency
+        _ -> 0.0
+
+
+-- ------------------------------------------
+-- 5. Add Tax using MAP
+-- ------------------------------------------
+
+-- Tax rate = 18%
+
+taxRate :: Double
+taxRate = 0.18
+
+
+-- Calculates the final amount of one order
+-- after currency conversion and tax.
+
+calculateOrderTotal :: Order -> Double
+calculateOrderTotal order =
+    let
+        priceUSD = convertToUSD order
+        subtotal = fromIntegral (quantity order) * priceUSD
+        tax      = subtotal * taxRate
+    in
+        subtotal + tax
+
+
+-- MAP is used to transform every valid order
+-- into its final amount.
+
+transformData :: [Order] -> [Double]
+transformData orders =
+    map calculateOrderTotal orders
+
+
+-- ------------------------------------------
+-- 6. Calculate Revenue using REDUCE
+-- ------------------------------------------
+
+-- Haskell uses foldr/foldl as the functional
+-- programming equivalent of reduce.
+
+totalRevenue :: [Order] -> Double
+totalRevenue orders =
+    foldr
+        (\order total ->
+            calculateOrderTotal order + total)
+        0
+        orders
+
+
+-- ------------------------------------------
+-- 7. Calculate Revenue BEFORE Tax
+-- ------------------------------------------
+
+subtotalOfOrder :: Order -> Double
+subtotalOfOrder order =
+    fromIntegral (quantity order) * convertToUSD order
+
+
+totalRevenueBeforeTax :: [Order] -> Double
+totalRevenueBeforeTax orders =
+    foldr
+        (\order total ->
+            subtotalOfOrder order + total)
+        0
+        orders
+
+
+-- ------------------------------------------
+-- 8. Calculate Total Quantity by Category
+-- ------------------------------------------
+
+categoryTotals :: [Order] -> M.Map String Int
+categoryTotals orders =
+    foldr addOrder M.empty orders
+    where
+        addOrder order result =
+            M.insertWith
+                (+)
+                (category order)
+                (quantity order)
+                result
+
+
+-- ------------------------------------------
+-- 9. Find Top-Selling Product Category
+-- ------------------------------------------
+
+topCategory :: [Order] -> (String, Int)
+topCategory orders =
+    maximumBy
+        (comparing snd)
+        (M.toList (categoryTotals orders))
+
+
+-- ------------------------------------------
+-- 10. Display Category Information
+-- ------------------------------------------
+
+displayCategories :: [Order] -> IO ()
+displayCategories orders = do
+
+    putStrLn "\nProduct Category Quantities:"
+    putStrLn "----------------------------"
+
+    mapM_
+        (\(cat, qty) ->
+            putStrLn (cat ++ " : " ++ show qty ++ " units"))
+        (M.toList (categoryTotals orders))
+
+
+-- ------------------------------------------
+-- 11. Display Transformed Order Data
+-- ------------------------------------------
+
+displayTransformedData :: [Order] -> IO ()
+displayTransformedData orders = do
+
+    putStrLn "\nOrder Totals After 18% Tax:"
+    putStrLn "---------------------------"
+
+    mapM_
+        displayOrder
+        orders
+
+    where
+        displayOrder order =
+            putStrLn
+                ( "Order "
+                ++ show (orderId order)
+                ++ " - "
+                ++ product order
+                ++ " : $"
+                ++ show (calculateOrderTotal order)
+                )
+
+
+-- ------------------------------------------
+-- 12. Sample E-Commerce Data
+-- ------------------------------------------
+
+orders :: [Order]
+orders =
+    [ Order 1001 "Electronics" "Laptop"
+        2 800 "USD"
+
+    , Order 1002 "Electronics" "Phone"
+        3 500 "USD"
+
+    , Order 1003 "Accessories" "Mouse"
+        10 20 "USD"
+
+    , Order 1004 "Accessories" "Keyboard"
+        5 35 "USD"
+
+    , Order 1005 "Audio" "Headphones"
+        4 75 "USD"
+
+    , Order 1006 "Electronics" "Monitor"
+        2 300 "USD"
+
+    , Order 1007 "Accessories" "USB Cable"
+        12 10 "USD"
+
+    , Order 1008 "Electronics" "Webcam"
+        3 60 "USD"
+
+    , Order 1009 "Electronics" "Tablet"
+        1 450 "USD"
+
+    , Order 1010 "Audio" "Speaker"
+        6 55 "USD"
+
+    -- Invalid records
+    , Order 1011 "Accessories" "Mouse"
+        0 20 "USD"
+
+    , Order 1012 "Electronics" "Phone"
+        (-1) 500 "USD"
+    ]
+
+
+-- ------------------------------------------
+-- 13. Main Program
+-- ------------------------------------------
+
+main :: IO ()
+main = do
+
+    putStrLn "=========================================="
+    putStrLn "       E-COMMERCE LOG ANALYZER"
+    putStrLn "=========================================="
+
+    -- STEP 1: Clean corrupted data using FILTER
+    let validOrders = cleanData orders
+
+    putStrLn "\nOriginal Number of Records:"
+    print (length orders)
+
+    putStrLn "Valid Records After Cleaning:"
+    print (length validOrders)
+
+    putStrLn "Invalid Records Removed:"
+    print (length orders - length validOrders)
+
+
+    -- STEP 2: Transform data using MAP
+    displayTransformedData validOrders
+
+
+    -- STEP 3: Calculate revenue using REDUCE/FOLDR
+    let revenueBeforeTax =
+            totalRevenueBeforeTax validOrders
+
+    let revenueAfterTax =
+            totalRevenue validOrders
+
+    putStrLn "\nRevenue Summary:"
+    putStrLn "----------------"
+
+    putStrLn
+        ("Revenue Before Tax: $"
+        ++ show revenueBeforeTax)
+
+    putStrLn
+        ("Revenue After 18% Tax: $"
+        ++ show revenueAfterTax)
+
+
+    -- STEP 4: Find top-selling category
+    displayCategories validOrders
+
+    let (categoryName, quantitySold) =
+            topCategory validOrders
+
+    putStrLn "\nTop-Selling Category:"
+    putStrLn "---------------------"
+
+    putStrLn
+        (categoryName
+        ++ " with "
+        ++ show quantitySold
+        ++ " units")
+
+
+    -- Final message
+    putStrLn "\n=========================================="
+    putStrLn "        ANALYSIS COMPLETED"
+    putStrLn "=========================================="
